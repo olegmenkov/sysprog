@@ -62,6 +62,37 @@ def recreate_dir():
     cleanup()
     pathlib.Path(test_dir).mkdir(exist_ok=True)
 
+def print_diff(expected, got):
+    with open('output_expected.txt', 'w') as f:
+        f.write(expected)
+    with open('output_got.txt', 'w') as f:
+        f.write(got)
+    print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Diff >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+    print(subprocess.run(
+        ['diff -y output_expected.txt output_got.txt'],
+        shell=True,
+        stdout=subprocess.PIPE).stdout.decode('utf-8'))
+
+##########################################################################################
+print('⏳ Running tests one by one')
+recreate_dir()
+for section in test_sections:
+    for case in section.cases:
+        p = open_new_shell()
+        try:
+            output_got = p.communicate(case.body.encode(), small_timeout)[0].decode()
+        except subprocess.TimeoutExpired:
+            print('Too long no output for test {} on line {}. '\
+                  'Probably you forgot to process EOF or is '\
+                  'stuck in wait/waitpid()'.format(case.name, case.line))
+            sys.exit(-1)
+        if output_got != case.output:
+            print('Test output mismatch for {} on line {}'.format(case.name, case.line))
+            if args.verbose:
+                print_diff(case.output, output_got)
+            sys.exit(-1)
+print('✅ Passed')
+
 ##########################################################################################
 print('⏳ Running tests in one shell')
 recreate_dir()
@@ -75,7 +106,8 @@ for section in test_sections:
 try:
     output_got = p.communicate(input_cmd.encode(), small_timeout)[0].decode()
 except subprocess.TimeoutExpired:
-    print('Too long no output. Probably you forgot to process EOF')
+    print('Too long no output. Probably you forgot to process EOF or is stuck '\
+          'in wait/waitpid()')
     sys.exit(-1)
 if p.returncode != 0:
     print('Expected zero exit code')
@@ -83,35 +115,8 @@ if p.returncode != 0:
 if output_got != output_exp:
     print('Tests output mismatch')
     if args.verbose:
-            print('######## Expected:')
-            print(output_exp)
-            print('')
-            print('######## Got:')
-            print(output_got)
+        print_diff(output_exp, output_got)
     sys.exit(-1)
-print('✅ Passed')
-
-##########################################################################################
-print('⏳ Running tests one by one')
-recreate_dir()
-for section in test_sections:
-    for case in section.cases:
-        p = open_new_shell()
-        try:
-            output_got = p.communicate(case.body.encode(), small_timeout)[0].decode()
-        except subprocess.TimeoutExpired:
-            print('Too long no output for test {} on line {}. '\
-                  'Probably you forgot to process EOF'.format(case.name, case.line))
-            sys.exit(-1)
-        if output_got != case.output:
-            print('Test output mismatch for {} on line {}'.format(case.name, case.line))
-            if args.verbose:
-                print('######## Expected:')
-                print(case.output)
-                print('')
-                print('######## Got:')
-                print(output_got)
-            sys.exit(-1)
 print('✅ Passed')
 
 ##########################################################################################
